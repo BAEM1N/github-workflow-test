@@ -1,0 +1,54 @@
+name: Tutorial Issue Automation
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - '**/*'  # 모든 파일에 대한 커밋 감지
+
+jobs:
+  create_tutorial_issue:
+    runs-on: ubuntu-latest
+
+    if: contains(github.event.head_commit.message, 'tutorial-open')  # 커밋 메시지 조건 확인
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Determine Week and Milestone
+        id: week_calc
+        run: |
+          CURRENT_DATE=$(date +%s)
+          BASE_DATE=$(date -d "2024-01-05 00:00:00" +%s)
+
+          for i in {1..7}; do
+            WEEK_END=$(date -d "2024-01-05 +$((i * 7 - 1)) days 23:59:59" +%s)
+            if [ $CURRENT_DATE -le $WEEK_END ]; then
+              echo "week=$i" >> $GITHUB_ENV
+              echo "milestone=$i" >> $GITHUB_ENV
+              break
+            fi
+          done
+
+      - name: Create Tutorial Branch
+        run: |
+          BRANCH_NAME="tutorial-${GITHUB_SHA::7}"
+          git checkout -b "$BRANCH_NAME"
+          git push origin "$BRANCH_NAME"
+
+      - name: Create Issue
+        uses: peter-evans/create-issue-from-file@v5
+        with:
+          title: "${{ github.actor }} - ${{ env.week }}주차"
+          content: |
+            **Assignee**: @${{ github.actor }}
+            **Project**: LangChain
+            **Status**: Team Review
+            **Due Date**: ${{ env.week }}주차 (1주일 단위 마감일 적용됨)
+
+          labels: |
+            Team Review
+          milestone: ${{ env.milestone }}
+          assignees: ${{ github.actor }}
