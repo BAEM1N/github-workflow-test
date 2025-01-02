@@ -1,0 +1,97 @@
+name: Update Colab and GitHub Links
+
+on:
+  pull_request:
+    types:
+      - closed  # PR이 닫힐 때 트리거
+
+jobs:
+  update-notebooks:
+    if: github.event.pull_request.merged == true  # 병합된 경우에만 실행
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout Code
+      uses: actions/checkout@v3
+
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.x'
+
+    - name: Install Dependencies
+      run: pip install nbformat
+
+    - name: Update and Execute First Markdown Cell
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      run: |
+        python3 << 'EOF'
+        import os
+        import nbformat
+
+        def update_and_execute_markdown_cell(file_path, repo_url, branch):
+            """
+            Notebook 파일에서 Colab 및 GitHub 링크를 업데이트하고 첫 번째 Markdown 셀을 실행한 것처럼 처리
+            """
+            with open(file_path, "r", encoding="utf-8") as file:
+                notebook = nbformat.read(file, as_version=nbformat.NO_CONVERT)
+
+            # 첫 번째 Markdown 셀만 처리
+            first_cell = notebook.cells[0] if notebook.cells else None
+            if first_cell and first_cell.cell_type == "markdown":
+                lines = first_cell.source.splitlines()
+
+                # Colab 및 GitHub 링크 생성
+                colab_url = f"https://colab.research.google.com/github/{repo_url}/blob/{branch}/{file_path.replace(os.sep, '/')}"
+                github_badge = f"[![Open in GitHub](https://img.shields.io/badge/Open%20in%20GitHub-181717?style=flat-square&logo=github&logoColor=white)](https://github.com/{repo_url}/blob/{branch}/{file_path.replace(os.sep, '/')})"
+
+                updated = False
+                for i, line in enumerate(lines):
+                    # Colab과 GitHub 링크를 한 번에 업데이트
+                    if "![Open in Colab]" in line and "![Open in LangChain Academy]" in line:
+                        lines[i] = f"[![Open in Colab](https://colab.research.google.com/assets/colab-badge.svg)]({colab_url}) {github_badge}"
+                        updated = True
+                        print(f"Updated Colab and GitHub links in {file_path} at line {i + 1}")
+
+                # Markdown 셀 실행 결과 추가
+                if updated:
+                    first_cell.source = "\n".join(lines)
+                    first_cell.execution_count = 1
+                    first_cell.outputs = [
+                        {
+                            "output_type": "display_data",
+                            "data": {"text/markdown": first_cell.source},
+                            "metadata": {}
+                        }
+                    ]
+                    print(f"Executed first Markdown cell in {file_path}")
+
+            # 파일 저장
+            with open(file_path, "w", encoding="utf-8") as file:
+                nbformat.write(notebook, file)
+
+        def process_all_notebooks(repo_url, branch):
+            """
+            모든 .ipynb 파일의 Colab 및 GitHub 링크를 업데이트하고 첫 번째 Markdown 셀을 실행
+            """
+            for root, _, files in os.walk("."):
+                for file in files:
+                    if file.endswith(".ipynb"):
+                        file_path = os.path.join(root, file)
+                        print(f"Processing {file_path}...")
+                        update_and_execute_markdown_cell(file_path, repo_url, branch)
+
+        if __name__ == "__main__":
+            REPO_URL = "LangChain-OpenTutorial/LangChain-OpenTutorial"  # 실제 GitHub 저장소 정보
+            BRANCH = "main"  # 브랜치 이름
+            process_all_notebooks(REPO_URL, BRANCH)
+        EOF
+
+    - name: Commit and Push Changes
+      run: |
+        git config --global user.name "${GITHUB_ACTOR}"
+        git config --global user.email "${GITHUB_ACTOR}@users.noreply.github.com"
+        git add -A
+        git commit -m "Update Colab and GitHub links in notebooks" || echo "Nothing to commit"
+        git push
