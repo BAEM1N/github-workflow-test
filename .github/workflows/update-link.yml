@@ -88,12 +88,22 @@ jobs:
                 # Colab 및 GitHub 링크 생성
                 colab_url = f"https://colab.research.google.com/github/{repo_url}/blob/{branch}/{file_path.replace(os.sep, '/')}"
                 github_badge = f"[![Open in GitHub](https://img.shields.io/badge/Open%20in%20GitHub-181717?style=flat-square&logo=github&logoColor=white)](https://github.com/{repo_url}/blob/{branch}/{file_path.replace(os.sep, '/')})"
-                reviewers = get_pr_reviewers()
+
+                # 로그 출력
+                print(f"Generated Colab URL for {file_path}: {colab_url}")
+                print(f"Generated GitHub Badge for {file_path}: {github_badge}")
 
                 updated = False
                 for i, line in enumerate(lines):
+                    # Open in Colab이 있는 라인에 Colab과 GitHub 뱃지를 추가
+                    if "![Open in Colab]" in line:
+                        lines[i] = f"[![Open in Colab](https://colab.research.google.com/assets/colab-badge.svg)]({colab_url}) {github_badge}"
+                        updated = True
+                        print(f"Updated Colab and GitHub links in {file_path} at line {i + 1}")
+
                     # Peer Review 업데이트
                     if line.startswith("- Peer Review:"):
+                        reviewers = get_pr_reviewers()
                         lines[i] = f"- Peer Review: {reviewers}"
                         updated = True
                         print(f"Updated Peer Review in {file_path} at line {i + 1}")
