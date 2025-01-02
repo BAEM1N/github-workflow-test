@@ -1,4 +1,4 @@
-name: Update Colab and GitHub Links
+name: Update Colab, GitHub Links, and Peer Reviewers
 
 on:
   pull_request:
@@ -25,20 +25,43 @@ jobs:
     - name: Install Dependencies
       run: pip install nbformat requests
 
-    - name: Update Colab and GitHub Links for Changed Files
+    - name: Extract PR Number
+      id: extract_pr
+      run: echo "GITHUB_PR_NUMBER=${{ github.event.pull_request.number }}" >> $GITHUB_ENV
+
+    - name: Update Colab, GitHub Links, and Peer Reviewers
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        GITHUB_PR_NUMBER: ${{ env.GITHUB_PR_NUMBER }}
+        GITHUB_REPOSITORY: ${{ github.repository }}
       run: |
         python3 << 'EOF'
         import os
         import nbformat
         import requests
 
+        def get_pr_reviewers():
+            """
+            GitHub API를 사용하여 PR에 할당된 리뷰어 목록 가져오기
+            """
+            pr_number = os.getenv('GITHUB_PR_NUMBER')
+            repo = os.getenv('GITHUB_REPOSITORY')
+            headers = {'Authorization': f'token {os.getenv("GITHUB_TOKEN")}'}
+            url = f"https://api.github.com/repos/{repo}/pulls/{pr_number}/reviews"
+
+            response = requests.get(url, headers=headers)
+            response.raise_for_status()
+            reviews = response.json()
+
+            # 리뷰 상태가 APPROVED인 리뷰어만 가져오기
+            reviewers = {review['user']['login'] for review in reviews if review['state'] == 'APPROVED'}
+            return ", ".join([f"[{reviewer}](https://github.com/{reviewer})" for reviewer in reviewers]) if reviewers else "[]()"
+
         def get_changed_files():
             """
             GitHub API를 사용하여 PR에서 변경된 파일 목록 가져오기
             """
-            pr_number = os.getenv('GITHUB_REF').split('/')[-1]
+            pr_number = os.getenv('GITHUB_PR_NUMBER')
             repo = os.getenv('GITHUB_REPOSITORY')
             headers = {'Authorization': f'token {os.getenv("GITHUB_TOKEN")}'}
             url = f"https://api.github.com/repos/{repo}/pulls/{pr_number}/files"
@@ -64,15 +87,16 @@ jobs:
 
                 # Colab 및 GitHub 링크 생성
                 colab_url = f"https://colab.research.google.com/github/{repo_url}/blob/{branch}/{file_path.replace(os.sep, '/')}"
-                github_badge = f"[![Open in GitHub](https://img.shields.io/badge/Open%20in%20GitHub-181717?style=flat-square&logo=github&logoColor=white)](https://github.com/{repo_url}/blob/{branch}/{file_path.replace(os.sep, '/')}"
+                github_badge = f"[![Open in GitHub](https://img.shields.io/badge/Open%20in%20GitHub-181717?style=flat-square&logo=github&logoColor=white)](https://github.com/{repo_url}/blob/{branch}/{file_path.replace(os.sep, '/')})"
+                reviewers = get_pr_reviewers()
 
                 updated = False
                 for i, line in enumerate(lines):
-                    # Colab과 GitHub 링크를 한 번에 업데이트
-                    if "![Open in Colab]" in line and "![Open in LangChain Academy]" in line:
-                        lines[i] = f"[![Open in Colab](https://colab.research.google.com/assets/colab-badge.svg)]({colab_url}) {github_badge}"
+                    # Peer Review 업데이트
+                    if line.startswith("- Peer Review:"):
+                        lines[i] = f"- Peer Review: {reviewers}"
                         updated = True
-                        print(f"Updated Colab and GitHub links in {file_path} at line {i + 1}")
+                        print(f"Updated Peer Review in {file_path} at line {i + 1}")
 
                 # Markdown 셀 실행 결과 추가
                 if updated:
@@ -113,5 +137,5 @@ jobs:
         git config --global user.name "${GITHUB_ACTOR}"
         git config --global user.email "${GITHUB_ACTOR}@users.noreply.github.com"
         git add -A
-        git commit -m "Update Colab and GitHub links in notebooks" || echo "Nothing to commit"
+        git commit -m "Update Colab, GitHub links, and Peer Reviewers in notebooks" || echo "Nothing to commit"
         git push
